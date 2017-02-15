@@ -985,17 +985,24 @@ Bullet = !HorizontalRule NonindentSpace ('+' | '*' | '-') Spacechar+
 
 BulletNoSpace = !HorizontalRule NonindentSpace ('+' | '*' | '-')
 
-BulletList = &Bullet (ListTight | ListLoose)
+BulletList = &Bullet (BulletListTight | BulletListLoose)
 		{ $$->key = BULLETLIST; }
 
-ListTight = a:StartList
-		( ListItemTight { a = cons($$, a); } )+
-		BlankLine* (&Heading | !(Bullet | Enumerator | BulletNoSpace &EmptyList | EnumeratorNoSpace &EmptyList ))
+BulletListTight = a:StartList
+		( BulletListItemTight { a = cons($$, a); } )+
+		BlankLine* (&Heading | !(Bullet | BulletNoSpace &EmptyList ))
 		{
 			$$ = list(LIST, a);
 		}
 
-ListLoose = a:StartList
+OrderedListTight = a:StartList
+		( ListItemTight { a = cons($$, a); } )+
+		BlankLine* (&Heading | !(Enumerator | EnumeratorNoSpace &EmptyList ))
+		{
+			$$ = list(LIST, a);
+		}
+
+OrderedListLoose = a:StartList
 		( b:ListItem BlankLine*
 		{
 			node *li;
@@ -1007,6 +1014,46 @@ ListLoose = a:StartList
 		} )+
 		{
 			$$ = list(LIST, a);
+		}
+
+BulletListLoose = a:StartList
+		( b:BulletListItem BlankLine*
+		{
+			node *li;
+			li = b->children;
+			size_t size = strlen(li->str);
+			li->str = realloc(li->str, size + 3);
+			strncat(li->str + size, "\n\n", 2);  /* In loose list, \n\n added to end of each element */
+			a = cons(b, a);
+		} )+
+		{
+			$$ = list(LIST, a);
+		}
+
+BulletListItem = < ( Bullet | BulletNoSpace &EmptyList )>
+		a:StartList
+		( ListBlock { a = cons($$, a); }
+		( ListContinuationBlock { a = cons($$, a); } )* )
+		{
+			node *raw;
+			raw = mk_str_from_list(a, false);
+			raw->key = RAW;
+			$$ = node(LISTITEM);
+			$$->children = raw;
+		}
+
+BulletListItemTight = ( Bullet | BulletNoSpace &EmptyList )
+		a:StartList
+		( ListBlock { a = cons($$, a); }
+		( !BlankLine
+		ListContinuationBlock { a = cons($$, a); } )*
+		!ListContinuationBlock)
+		{
+			node *raw;
+			raw = mk_str_from_list(a, false);
+			raw->key = RAW;
+			$$ = node(LISTITEM);
+			$$->children = raw;
 		}
 
 ListItem = < ( Bullet | Enumerator | BulletNoSpace &EmptyList | EnumeratorNoSpace &EmptyList )>
@@ -1064,7 +1111,7 @@ Enumerator = NonindentSpace [0-9]+ '.' Spacechar+
 
 EnumeratorNoSpace = NonindentSpace [0-9]+ '.'
 
-OrderedList = &Enumerator (ListTight | ListLoose)
+OrderedList = &Enumerator (OrderedListTight | OrderedListLoose)
 		{ $$->key = ORDEREDLIST; }
 
 ListBlockLine = !BlankLine
